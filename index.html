@@ -32,7 +32,8 @@ main{max-width:640px;margin:0 auto;padding:14px;}
 .card h2{margin:0 0 10px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:6px;}
 .quote{background:var(--light-yellow);border-radius:14px;padding:16px;font-weight:700;font-size:15px;line-height:1.6;}
 .big-task{background:var(--light-pink);border-radius:14px;padding:14px;margin-top:8px;}
-.big-task .txt{font-size:15px;font-weight:700;margin:6px 0;}
+.big-task .txt{font-size:15px;font-weight:700;margin:6px 0;padding:6px 4px;border-bottom:2px dashed var(--pink)!important;background:rgba(255,255,255,.35)!important;border-radius:6px;}
+.big-task .txt::placeholder{color:var(--medium);opacity:.8;}
 .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--soft-blue);color:#fff;margin-right:4px;}
 textarea,input[type=text]{width:100%;border:1px solid #eee;border-radius:10px;padding:10px;font-family:inherit;font-size:14px;background:var(--cream);resize:vertical;}
 button{border:none;border-radius:10px;padding:9px 14px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;background:var(--yellow);color:var(--dark);}
@@ -50,6 +51,7 @@ nav.tabs button.active{color:var(--pink);}
 .view{display:none;} .view.active{display:block;}
 .goal-list li{margin-bottom:4px;font-size:14px;}
 select{border-radius:10px;padding:8px;border:1px solid #eee;background:var(--cream);font-family:inherit;}
+input[type=date]{border-radius:10px;padding:8px;border:1px solid #eee;background:var(--cream);font-family:inherit;font-size:13px;color:var(--medium);}
 .toggle{display:flex;background:var(--light-sage);border-radius:10px;overflow:hidden;}
 .toggle button{background:none;border-radius:0;flex:1;color:var(--medium);}
 .toggle button.on{background:var(--sage);color:#fff;}
@@ -70,8 +72,10 @@ select{border-radius:10px;padding:8px;border:1px solid #eee;background:var(--cre
   <div class="card"><h2>🔋 今日能量金句</h2><div class="quote" id="quoteBox"></div></div>
 
   <div class="card">
-    <h2>☀️ 今日偉大事件</h2>
-    <div class="row"><span style="font-size:13px;color:var(--medium)">今天</span>
+    <h2 id="taskHeading">☀️ 今日偉大事件</h2>
+    <div class="row" id="dateQuickPicks" style="margin-bottom:8px;"></div>
+    <input type="date" id="customDatePick" onchange="selectDate(this.value)" style="margin-bottom:8px;">
+    <div class="row"><span style="font-size:13px;color:var(--medium)" id="dayTypeLabel">今天</span>
       <div class="toggle"><button id="btnWork" onclick="setDayType('work')">時間有限</button><button id="btnOff" onclick="setDayType('off')">時間充裕</button></div>
     </div>
     <div id="taskArea"></div>
@@ -220,12 +224,18 @@ if(!data.drafts.review) data.drafts.review = {daily:[],weekly:[],monthly:[]};
 if(data.drafts.monthlyInput===undefined) data.drafts.monthlyInput='';
 if(data.drafts.weeklyInput===undefined) data.drafts.weeklyInput='';
 if(data.drafts.futureInput===undefined) data.drafts.futureInput='';
+if(!data.tasksByDate) data.tasksByDate = {};
+if(data.todayTask && data.todayTask.date){
+  data.tasksByDate[data.todayTask.date] = {tasks: data.todayTask.tasks || [''], dayType: data.dayType || 'work', manual: !!data.todayTask.manual};
+  delete data.todayTask;
+  delete data.dayType;
+}
 function load(){
   try{
     const raw = localStorage.getItem(KEY);
     if(raw) return JSON.parse(raw);
   }catch(e){}
-  return {ideas:[], goals:{monthly:[],weekly:[],future:[]}, content:[], reviews:{daily:[],weekly:[],monthly:[]}, todayTask:{}, dayType:'work',
+  return {ideas:[], goals:{monthly:[],weekly:[],future:[]}, content:[], reviews:{daily:[],weekly:[],monthly:[]}, tasksByDate:{},
     drafts:{quickIdea:'', newIdea:'', contentSource:'', monthlyInput:'', weeklyInput:'', futureInput:'', review:{daily:[],weekly:[],monthly:[]}}};
 }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(data)); }catch(e){} }
@@ -246,13 +256,56 @@ const QUOTES = [
  "有些事情本來就需要時間長出來。"
 ];
 
+function isoDate(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function dateStr(){
   const d = new Date();
   const w = ['日','一','二','三','四','五','六'][d.getDay()];
   document.getElementById('dateLine').textContent = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 星期${w}`;
-  return d.toISOString().slice(0,10);
+  return isoDate(d);
 }
 const today = dateStr();
+let selectedDate = today;
+function addDays(dateStr, n){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  dt.setDate(dt.getDate()+n);
+  return isoDate(dt);
+}
+function dateLabel(dateStr){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  const w = ['日','一','二','三','四','五','六'][dt.getDay()];
+  if(dateStr===today) return `${m}/${d}（今天）`;
+  if(dateStr===addDays(today,1)) return `${m}/${d}（明天）`;
+  if(dateStr===addDays(today,2)) return `${m}/${d}（後天）`;
+  return `${m}/${d}（週${w}）`;
+}
+function relativeLabel(dateStr){
+  if(dateStr===today) return '今天';
+  if(dateStr===addDays(today,1)) return '明天';
+  if(dateStr===addDays(today,2)) return '後天';
+  return '這天';
+}
+function getDayRecord(dateStr){
+  if(!data.tasksByDate[dateStr]){
+    data.tasksByDate[dateStr] = {tasks: dateStr===today ? [suggestTask()] : [''], dayType:'work', manual:false};
+  }
+  return data.tasksByDate[dateStr];
+}
+function selectDate(d){
+  if(!d) return;
+  selectedDate = d;
+  document.getElementById('customDatePick').value = d;
+  renderTaskArea();
+}
+function renderDateQuickPicks(){
+  const opts = [['今天',today],['明天',addDays(today,1)],['後天',addDays(today,2)]];
+  document.getElementById('dateQuickPicks').innerHTML = opts.map(([label,d])=>
+    `<span class="pill ${selectedDate===d?'active':''}" onclick="selectDate('${d}')">${label}</span>`).join('');
+  document.getElementById('customDatePick').value = selectedDate;
+}
 
 function renderQuote(){
   const dayNum = new Date().getDate() + new Date().getMonth()*31;
@@ -340,7 +393,7 @@ function renderRecentIdeas(){
 
 // ---------- today task ----------
 function setDayType(t){
-  data.dayType = t; save(); renderTaskArea();
+  getDayRecord(selectedDate).dayType = t; save(); renderTaskArea();
 }
 let taskSuggestIndex = 0;
 function getSuggestionPool(){
@@ -355,27 +408,27 @@ function suggestTask(){
   return pool[taskSuggestIndex % pool.length];
 }
 function renderTaskArea(){
-  document.getElementById('btnWork').className = data.dayType==='off'?'':'on';
-  document.getElementById('btnOff').className = data.dayType==='off'?'on':'';
-  if(!data.todayTask.date || data.todayTask.date!==today){
-    const n = data.dayType==='off' ? 3 : 1;
-    data.todayTask = {date:today, tasks:Array.from({length:n},(_, idx)=> idx===0? suggestTask(): ''), manual:false};
-    save();
-  }
-  const n = data.dayType==='off' ? 3 : 1;
-  while(data.todayTask.tasks.length < n) data.todayTask.tasks.push('');
-  data.todayTask.tasks = data.todayTask.tasks.slice(0,n);
+  renderDateQuickPicks();
+  document.getElementById('taskHeading').textContent = `☀️ ${dateLabel(selectedDate)}的偉大事件`;
+  document.getElementById('dayTypeLabel').textContent = relativeLabel(selectedDate);
+  const rec = getDayRecord(selectedDate);
+  document.getElementById('btnWork').className = rec.dayType==='off'?'':'on';
+  document.getElementById('btnOff').className = rec.dayType==='off'?'on':'';
+  const n = rec.dayType==='off' ? 3 : 1;
+  while(rec.tasks.length < n) rec.tasks.push('');
+  rec.tasks = rec.tasks.slice(0,n);
+  save();
   document.getElementById('taskArea').innerHTML = `
     <div class="big-task">
-      ${data.todayTask.tasks.map((t,idx)=>`<input type="text" class="txt" style="width:100%;border:none;background:transparent;font-weight:700;" value="${escapeHtml(t)}" oninput="updateTask(${idx}, this.value)" placeholder="今天的重要事情...">`).join('')}
+      ${rec.tasks.map((t,idx)=>`<input type="text" class="txt" style="width:100%;border:none;background:transparent;font-weight:700;" value="${escapeHtml(t)}" oninput="updateTask(${idx}, this.value)" placeholder="這天的重要事情...">`).join('')}
       <div class="row" style="margin-top:6px;"><button class="sm ghost" onclick="rerollTask()">🔄 換一個建議</button></div>
     </div>`;
 }
-function updateTask(idx, v){ data.todayTask.tasks[idx]=v; data.todayTask.manual=true; save(); }
+function updateTask(idx, v){ getDayRecord(selectedDate).tasks[idx]=v; getDayRecord(selectedDate).manual=true; save(); }
 function rerollTask(){
   const pool = getSuggestionPool();
   if(pool.length) taskSuggestIndex = (taskSuggestIndex+1) % pool.length;
-  data.todayTask.tasks[0]=suggestTask();
+  getDayRecord(selectedDate).tasks[0]=suggestTask();
   save(); renderTaskArea();
 }
 
@@ -531,8 +584,13 @@ function importData(evt){
           weekly: Array.isArray(parsed.reviews?.weekly) ? parsed.reviews.weekly : [],
           monthly: Array.isArray(parsed.reviews?.monthly) ? parsed.reviews.monthly : []
         },
-        todayTask: parsed.todayTask && typeof parsed.todayTask==='object' ? parsed.todayTask : {},
-        dayType: parsed.dayType==='off' ? 'off' : 'work',
+        tasksByDate: (() => {
+          if(parsed.tasksByDate && typeof parsed.tasksByDate==='object') return parsed.tasksByDate;
+          if(parsed.todayTask && parsed.todayTask.date){
+            return {[parsed.todayTask.date]: {tasks: parsed.todayTask.tasks||[''], dayType: parsed.dayType||'work', manual: !!parsed.todayTask.manual}};
+          }
+          return {};
+        })(),
         drafts: {
           quickIdea: typeof parsed.drafts?.quickIdea==='string' ? parsed.drafts.quickIdea : '',
           newIdea: typeof parsed.drafts?.newIdea==='string' ? parsed.drafts.newIdea : '',
@@ -547,7 +605,7 @@ function importData(evt){
           }
         }
       };
-      taskSuggestIndex = 0; lastGenerated = null; activeFilter = null;
+      taskSuggestIndex = 0; lastGenerated = null; activeFilter = null; selectedDate = today;
       save(); renderAll();
       alert('匯入成功！');
     }catch(err){ alert('檔案格式錯誤'); }
