@@ -69,6 +69,7 @@ input[type=date]{border-radius:10px;padding:8px;border:1px solid #eee;background
 <main>
 
 <div id="view-home" class="view active">
+  <div id="backupBanner"></div>
   <div class="card"><h2>🔋 今日能量金句</h2><div class="quote" id="quoteBox"></div></div>
 
   <div class="card">
@@ -230,6 +231,7 @@ if(data.todayTask && data.todayTask.date){
   delete data.todayTask;
   delete data.dayType;
 }
+if(data.lastBackupDate===undefined) data.lastBackupDate = null;
 function load(){
   try{
     const raw = localStorage.getItem(KEY);
@@ -557,12 +559,36 @@ function renderDashboard(){
   ];
   document.getElementById('dashStats').innerHTML = s.map(x=>`<div class="stat"><b>${x[1]}</b><span>${x[0]}</span></div>`).join('');
 }
+function daysSince(dateStr){
+  const [y1,m1,d1] = today.split('-').map(Number);
+  const [y2,m2,d2] = dateStr.split('-').map(Number);
+  const a = new Date(y1,m1-1,d1), b = new Date(y2,m2-1,d2);
+  return Math.round((a-b)/86400000);
+}
+function renderBackupBanner(){
+  const hasData = data.ideas.length>0 || data.content.length>0 || data.goals.monthly.length>0 || data.goals.weekly.length>0;
+  const overdue = !data.lastBackupDate || daysSince(data.lastBackupDate) >= 3;
+  const el = document.getElementById('backupBanner');
+  if(!el) return;
+  if(hasData && overdue){
+    const msg = data.lastBackupDate ? `上次備份是 ${data.lastBackupDate}，超過 3 天囉` : '你還沒備份過資料';
+    el.innerHTML = `<div class="card" style="background:var(--light-sage);">
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <div style="font-size:13px;color:var(--medium);">💾 ${msg}，怕手機空間不足時把資料清掉，建議備份一下</div>
+        <button class="sm" onclick="exportData()">立即備份</button>
+      </div>
+    </div>`;
+  } else {
+    el.innerHTML = '';
+  }
+}
 
 // ---------- export/import ----------
 function exportData(){
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = 'uu-ai-assistant-backup.json'; a.click();
+  data.lastBackupDate = today; save(); renderBackupBanner();
 }
 function importData(evt){
   const file = evt.target.files[0]; if(!file) return;
@@ -603,7 +629,8 @@ function importData(evt){
             weekly: Array.isArray(parsed.drafts?.review?.weekly) ? parsed.drafts.review.weekly : [],
             monthly: Array.isArray(parsed.drafts?.review?.monthly) ? parsed.drafts.review.monthly : []
           }
-        }
+        },
+        lastBackupDate: today
       };
       taskSuggestIndex = 0; lastGenerated = null; activeFilter = null; selectedDate = today;
       save(); renderAll();
@@ -618,7 +645,7 @@ function go(v){
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.v===v));
-  if(v==='home'){ renderTaskArea(); renderRecentIdeas(); renderHomeGoals(); }
+  if(v==='home'){ renderTaskArea(); renderRecentIdeas(); renderHomeGoals(); renderBackupBanner(); }
   else if(v==='ideas'){ renderIdeas(); }
   else if(v==='content'){ renderIdeaPicker(); renderContentList(); }
   else if(v==='goals'){ renderGoals(); }
@@ -640,7 +667,7 @@ function renderAll(){
   restoreDrafts();
   renderQuote(); renderTaskArea(); renderRecentIdeas(); renderHomeGoals();
   renderIdeas(); renderGoals(); renderIdeaPicker(); renderContentList();
-  renderReviewForm(); renderReviewList(); renderDashboard();
+  renderReviewForm(); renderReviewList(); renderDashboard(); renderBackupBanner();
 }
 renderAll();
 </script>
